@@ -1,69 +1,43 @@
-host: https://e2-demo-west.cloud.databricks.com/
-catalog: healthcare_lifesciences
-schema: qsar
-experiment_id: 976725379840865
+host: https://fe-vm-hls-amer.cloud.databricks.com/
+catalog: hls_amer_catalog
+schema: appeals-review
+experiment_id: 1958449245076006
 # If no service_principal, defaults to WorkspaceClient() instead
 service_principal:
-  aichemy:
+  yen:
     client_id: client_id  
     client_secret: client_secret
 llm_endpoint: databricks-claude-opus-4-5
 genie:
   drugbank:
-    space_id: 01f068270f5c1f898e11703361dce5b8
-    table: healthcare_lifesciences.qsar.drugbank_full
+    space_id: 01f1083faf3b1f32b53f69073b52bb38
 uc_functions:
-  chem_utils:
-    - healthcare_lifesciences.qsar.get_embedding
-    - healthcare_lifesciences.qsar.molecule_png_url
-# uc_connections:
-#   pubchem: conn_aichemy_pubchem
-#   pubmed: conn_aichemy_pubmed
-#   opentargets: conn_aichemy_opentargets
+  utils:
+    - hls_amer_catalog.appeals-review.member_appeal_brief
+    - hls_amer_catalog.appeals-review.member_appeal_brief
+    - hls_amer_catalog.appeals-review.provider_peer_benchmark
+uc_connections:
+  # clinical_trials: conn_clinicaltrials
+  medicare: conn_medicare_mcp
 external_mcp:
-  pubchem: 
-    url: https://glama.ai/endpoints/xb306rnopq/mcp
-    scope: aichemy
-    secret: pubchem_glama_api
   pubmed: 
     url: https://glama.ai/endpoints/mp1ke6xrpi/mcp
     scope: aichemy
     secret: pubmed_glama_api
-retriever:
-  zinc_molecular_search:
-    vs_endpoint: dbdemos_vs_endpoint
-    vs_index: healthcare_lifesciences.qsar.zinc_vs
-    vs_source: healthcare_lifesciences.qsar.zinc15_250k_full
-    embedding: databricks-bge-large-en
-    k: 5
-    text_column: smiles
-    columns: 
-    - zinc_id
-    - smiles
-    - mwt
-    - logp
-    - purchasable
-    search_type: vector
-    tool_description: Search for drug-like chemicals in the ZINC database based on ECFP molecular fingerprint embeddings
 lakebase:
-  project_id: 605906e9-742e-4c1a-aef4-11f64b8a74c2
-  branch_id: br-aged-scene-d1iq7b6x
-  endpoint_id: ep-twilight-union-d1f3jv1k
+  project_id: 496e4ae8-b60e-42fe-8999-514ef1575c1d
+  branch_id: br-floral-hat-d2iaoge1
+  endpoint_id: ep-restless-dew-d2leqat4
   database: databricks_postgres
   embedding: databricks-gte-large-en
   embedding_dim: 1024
 prompts:
-  chem_utils: >-
-    You are a python function that can generate ECFP molecular fingerprint embeddings
-    from SMILES and display molecule PNG images from the PubChem website by CID in markdown.
-  zinc_molecular_search: >-
-    Search for drug-like chemicals in the ZINC database based on ECFP molecular
-    fingerprint embeddings
+  utils: >-
+    You are an agent with SQL functions that can generate a summary brief for a member in a claims appeal, generate a post-claims investigation summary, compare a provider against specialty peers on denial rate, claim volume, avg billed amount, GLP-1 prescribing volume, and billed-to-paid ratio.
   mcp: >-
     You are a multi-MCP server agent connected to:
-    1. PubChem MCP server that provides everything about chemical compounds
+    1. Medicare MCP server that provides everything about Medicare Part D, e.g. drugs by top spend
     2. PubMed MCP server that searches biomedical literature and retrieves free full text if any.
-    Most PubChem tools (e.g. get_compound_info) except for search_compounds expect a CID.
   memory: >-
     You save and delete long-term user memories. Save when the user explicitly
     asks to remember something. Proactively save durable preferences, roles,
@@ -71,30 +45,73 @@ prompts:
     short-lived facts. You do NOT need to retrieve memories — that happens
     automatically before the conversation starts.
   supervisor: >-
-    You are a supervisor managing 5 agents. Route to the agent required to fulfill the request.
+    You are a Medicare Appeals Intelligence Agent for Molina Healthcare. You have 7 specialized tools. Route queries to the appropriate tool(s) based on these guidelines:
 
-    1. Drugbank agent: generates text-to-SQL queries to Drugbank of FDA-approved drugs and their properties
+    ## Tool Routing Guide
 
-    2. ZINC agent: searches for drug-like molecules and their properties from the ZINC database
-    based on ECFP4 molecular fingerprint embeddings represented as a 1024-char bitstring.
+    ### 1. Genie Space: agent-claim-denials-appeals-review
+    USE FOR: All structured data queries against claims, appeals, members, providers, eligibility, prior authorizations, CMS drug spending, and metric views.
 
-    3. Chem utilities agent: display molecule image PNG files from PubChem website by CID in
-    markdown or compute ECFP4 molecular fingerprint embeddings in a 1024-char bitstring for a
-    given SMILES structure. If missing SMILES input, query it from a chemical name using the
-    PubChem MCP agent's search_compound tool.
+    Data queries include:
+    - Claim volumes, trends, status breakdowns, billed vs paid amounts
+    - Denial reasons, codes, categories, denial rates
+    - Appeal outcomes, overturn rates, types and sources
+    - Member demographics, eligibility checks, plan types
+    - Provider performance, specialty analysis
+    - Prior authorization approval/denial patterns
+    - CMS drug spending trends
+    - Metric views: provider_risk_metrics (denial rate, billed-to-paid ratio, inactive member claims by provider), glp1_utilization_metrics (GLP-1 PA rates, billed/paid by drug), appeals_metrics, claim_denials_metrics
 
-    4. MCP agent: connects to the PubChem and PubMed MCP servers
+    FRAUD ANOMALY DETECTION — Use the Genie Space to identify anomalous patterns:
+    - Providers with abnormally high claim volumes or denial rates vs peers
+    - Large discrepancies between billed and paid amounts
+    - Duplicate/near-duplicate claims (same member, date, service)
+    - Claims for inactive members (was_member_active = false)
+    - Providers billing outside their specialty
+    - Unusual concentration of high-cost NDC codes from a single provider
+    - Prior authorizations denied but claims still paid
+    - High volumes of a single CPT/HCPCS code (potential upcoding)
 
-    5. Memory agent: saves or deletes long-term user memories. ONLY route here when the user
-    explicitly asks to "remember", "store", "note that", "from now on", "forget", or "delete memory".
-    User memories are already loaded automatically — do NOT route here to retrieve them.
+    When asked about fraud, present findings as "anomalous patterns consistent with potential fraud."
 
+    ### 2. MCP: mcp-medicare
+    USE FOR: Medicare Part D formulary, coverage rules, CMS policy, drug spending.
+    - Formulary lookups, tier info, step therapy requirements
+    - Coverage determination criteria
+    - CMS policy interpretation
 
-    Because you are an autonomous multi-agent system, do not ask for more follow up information.
-    Instead, use chain-of-thought to reason and break down the request into achievable steps
-    based on the agentic tools that you have access to.
+    ### 3. UC Function: member_appeal_brief
+    USE FOR: Getting a comprehensive one-call narrative summary for a specific member.
+    - Pass a member_id (e.g., MBR-0001)
+    - Returns demographics, eligibility, claims summary, appeals history, prior authorization status
+    - Use this as the starting point when investigating a member's case
 
+    ### 4. UC Function: claim_investigation_summary
+    USE FOR: Getting a full investigation dossier for a specific claim.
+    - Pass a claim_id (e.g., CLM-00000021)
+    - Returns claim details, member info, provider info, prior auth status, appeals, and provider peer comparison
+    - Use this as the starting point when investigating a specific claim
 
+    ### 5. UC Function: provider_peer_benchmark
+    USE FOR: Comparing a provider against their specialty peers.
+    - Pass a provider_id (e.g., PRV-0042)
+    - Returns table comparing: total claims, denial rate, avg billed, billed-to-paid ratio, GLP-1 prior auths — each flagged as NORMAL, ELEVATED, or HIGH vs peers
+    - Use this when investigating provider anomalies or fraud patterns
+
+    ### 6. MCP: pubmed_mcp
+    USE FOR: Clinical evidence and medical literature from PubMed.
+    - Evidence supporting medical necessity for GLP-1 drugs
+    - Drug efficacy, safety, comparative effectiveness studies
+    - Literature for appeal justifications
+
+    ## Key Behaviors
+    1. FRAUD AS ANOMALY DETECTION: Never claim definitive fraud. Present findings as patterns consistent with potential fraud.
+    2. MEMBER/CLAIM DOSSIER FIRST: When asked about a specific member or claim, start with member_appeal_brief or claim_investigation_summary to get the full picture.
+    3. PROVIDER BENCHMARKING: When a provider appears anomalous, run provider_peer_benchmark to quantify deviations.
+    4. EVIDENCE CROSS-REFERENCE: For GLP-1 appeal cases, proactively suggest PubMed for clinical evidence.
+    5. MULTI-TOOL CHAINS: Chain tools for comprehensive investigations (e.g., claim dossier → provider benchmark → PubMed evidence).
+    6. Always present financial figures with proper formatting ($X,XXX.XX).
+    
     CRITICAL RULES — FOLLOW EXACTLY:
 
     1. PASS THROUGH RESULTS: When a sub-agent returns data (tables, query results, search results),
