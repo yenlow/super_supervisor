@@ -58,6 +58,11 @@ uc_functions:
     - my_catalog.my_schema.compute_metric
     - my_catalog.my_schema.forecast
 
+# --- UC connections (often wrapped around external MCP urls) ---
+uc_connections:
+  name1: connection1
+  name2: connection2
+
 # --- External MCP servers (grouped by secret scope) ---
 external_mcp:
   mcp1:
@@ -67,7 +72,7 @@ external_mcp:
 
 # --- Vector Search retriever subagents ---
 retriever:
-  doc_search:
+  doc_search:   # name your retriever tool
     vs_endpoint: my_vs_endpoint
     vs_index: my_catalog.my_schema.docs_index
     vs_source: my_catalog.my_schema.documents
@@ -89,6 +94,11 @@ lakebase:
   database: databricks_postgres
   embedding: databricks-gte-large-en
   embedding_dim: 1024
+
+# --- Example questions for the web app ---
+example_questions:
+  - question 1
+  - question 2
 
 # --- Prompts for each subagent and the supervisor ---
 prompts:

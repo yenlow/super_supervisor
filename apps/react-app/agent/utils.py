@@ -10,6 +10,8 @@ from mlflow.types.responses import ResponsesAgentRequest
 from uuid import uuid4
 import asyncio
 import logging
+import httpx
+from httpx import AsyncClient, Timeout
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +216,7 @@ def build_mcp_list(cfg, ws_client=None):
     for name, mcp_cfg in cfg.get("external_mcp", {}).items():
         url = mcp_cfg["url"]
         kwargs = dict(name=name, url=url, timeout=60, terminate_on_close=False)
+        # kwargs["httpx_client_factory"] = resilient_httpx_factory
         if "secret" in mcp_cfg:
             kwargs["headers"] = {
                 "Authorization": f"Bearer {get_secret(scope=mcp_cfg.get('scope'), key=mcp_cfg.get('secret'))}"
@@ -262,6 +265,17 @@ def _load_mcp_tools_individually(servers, max_retries: int = 3) -> list:
                     )
     logger.info("MCP fallback complete: %d total tools loaded", len(all_tools))
     return all_tools
+
+
+def resilient_httpx_factory(headers=None, timeout=None, auth=None):
+    transport = httpx.AsyncHTTPTransport(retries=3)
+    return AsyncClient(
+        headers=headers,
+        timeout=timeout or Timeout(60, read=300),
+        auth=auth,
+        transport=transport,
+        follow_redirects=True,
+    )
 
 
 # ---------------------------------------------------------------------------

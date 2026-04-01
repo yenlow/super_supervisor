@@ -9,11 +9,10 @@ service_principal:
     client_secret: client_secret
 llm_endpoint: databricks-claude-opus-4-5
 genie:
-  drugbank:
+  appeals:
     space_id: 01f1083faf3b1f32b53f69073b52bb38
 uc_functions:
   utils:
-    - hls_amer_catalog.appeals-review.member_appeal_brief
     - hls_amer_catalog.appeals-review.member_appeal_brief
     - hls_amer_catalog.appeals-review.provider_peer_benchmark
 uc_connections:
@@ -24,13 +23,22 @@ external_mcp:
     url: https://glama.ai/endpoints/mp1ke6xrpi/mcp
     scope: aichemy
     secret: pubmed_glama_api
+  # pubchem: 
+  #   url: https://glama.ai/endpoints/xb306rnopq/mcp
+  #   scope: aichemy
+  #   secret: pubchem_glama_api
 lakebase:
-  project_id: 496e4ae8-b60e-42fe-8999-514ef1575c1d
-  branch_id: br-floral-hat-d2iaoge1
-  endpoint_id: ep-restless-dew-d2leqat4
+  project_id: yen-lakebase
+  branch_id: production
+  endpoint_id: primary
   database: databricks_postgres
   embedding: databricks-gte-large-en
   embedding_dim: 1024
+example_questions:
+  - "Get the appeal brief for member MBR-0001"
+  - "Benchmark provider PRV-0042 against their specialty peers"
+  - "What are the top 10 denial reasons across all claims?"
+  - "What are the top drugs by Medicare Part D spending?"
 prompts:
   utils: >-
     You are an agent with SQL functions that can generate a summary brief for a member in a claims appeal, generate a post-claims investigation summary, compare a provider against specialty peers on denial rate, claim volume, avg billed amount, GLP-1 prescribing volume, and billed-to-paid ratio.

@@ -106,80 +106,71 @@ def _build_agent() -> StateGraph:
 
     # --- Utility functions agent ---
     function_agents = []
-    for agent_name, functions in _cfg["uc_functions"].items():
-        tools = UCFunctionToolkit(function_names=functions).tools
-        function_agent = create_agent(
-            llm,
-            tools=tools,
-            system_prompt=_cfg["prompts"][agent_name],
-            name=agent_name,
-        )
-        function_agents.append(function_agent)
+    if _cfg.get("uc_functions"):
+        for agent_name, functions in _cfg["uc_functions"].items():
+            tools = UCFunctionToolkit(function_names=functions).tools
+            function_agent = create_agent(
+                llm,
+                tools=tools,
+                system_prompt=_cfg["prompts"][agent_name],
+                name=agent_name,
+            )
+            function_agents.append(function_agent)
+    else:
+        logger.warning("No 'uc_functions' specified in config.yml — skipping UC function agents")
 
     # --- DrugBank Genie agent ---
     genie_agents = []
-    for agent_name, genie_config in _cfg["genie"].items():
-        genie_agent = GenieAgent(genie_config["space_id"], genie_agent_name=agent_name)
-        genie_agents.append(genie_agent)
+    if _cfg.get("genie"):
+        for agent_name, genie_config in _cfg["genie"].items():
+            genie_agent = GenieAgent(genie_config["space_id"], genie_agent_name=agent_name)
+            genie_agents.append(genie_agent)
+    else:
+        logger.warning("No 'genie' specified in config.yml — skipping Genie agents")
 
     # --- ZINC vector search agent ---
     retriever_agents = []
-    for agent_name, retriever_config in _cfg["retriever"].items():
-        retriever_tool = VectorSearchRetrieverTool(
-            index_name=retriever_config["vs_index"],
-            num_results=retriever_config["k"],
-            columns=retriever_config["columns"],
-            text_column=retriever_config["text_column"],
-            tool_name=agent_name,
-            tool_description=retriever_config["tool_description"],
-            embedding=DatabricksEmbeddings(endpoint=retriever_config["embedding"]),
-            workspace_client=ws_client,
-        )
+    if _cfg.get("retriever"):
+        for agent_name, retriever_config in _cfg["retriever"].items():
+            retriever_tool = VectorSearchRetrieverTool(
+                index_name=retriever_config["vs_index"],
+                num_results=retriever_config["k"],
+                columns=retriever_config["columns"],
+                text_column=retriever_config["text_column"],
+                tool_name=agent_name,
+                tool_description=retriever_config["tool_description"],
+                embedding=DatabricksEmbeddings(endpoint=retriever_config["embedding"]),
+                workspace_client=ws_client,
+            )
 
-        if retriever_config["search_type"] == "vector":
-            # only needed if non-text embeddings
-            @tool
-            def tool_vectorinput(bitstring: str):
-                """
-                Search for similar molecules based on their ECFP4 molecular fingerprints embedding
-                vector (list of int). Required input (bitstring) is a 1024-char bitstring
-                (e.g. 1011..00) which is the concatenated string form of a list of 1024 integers.
-                """
-                query_vector = [int(c) for c in bitstring]
-                docs = retriever_tool._vector_store.similarity_search_by_vector(
-                    query_vector, k=retriever_config["k"]
-                )
-                return [doc.metadata | {retriever_config["text_column"]: doc.page_content} for doc in docs]
-                
-            tool = [tool_vectorinput]
-        else:
-            tool = [retriever_tool]
+            if retriever_config["search_type"] == "vector":
+                @tool
+                def tool_vectorinput(bitstring: str):
+                    """
+                    Search for similar molecules based on their ECFP4 molecular fingerprints embedding
+                    vector (list of int). Required input (bitstring) is a 1024-char bitstring
+                    (e.g. 1011..00) which is the concatenated string form of a list of 1024 integers.
+                    """
+                    query_vector = [int(c) for c in bitstring]
+                    docs = retriever_tool._vector_store.similarity_search_by_vector(
+                        query_vector, k=retriever_config["k"]
+                    )
+                    return [doc.metadata | {retriever_config["text_column"]: doc.page_content} for doc in docs]
 
-        retreiver_agent = create_agent(
-            llm,
-            tools=[tool_vectorinput],
-            system_prompt=_cfg["prompts"][agent_name],
-            name=agent_name,
-        )
-        retriever_agents.append(retreiver_agent)
+                tool = [tool_vectorinput]
+            else:
+                tool = [retriever_tool]
 
-    # --- MCP agents (PubChem / PubMed / OpenTargets) ---
-    servers = build_mcp_list(_cfg, ws_client=ws_client)
+            retreiver_agent = create_agent(
+                llm,
+                tools=[tool_vectorinput],
+                system_prompt=_cfg["prompts"][agent_name],
+                name=agent_name,
+            )
+            retriever_agents.append(retreiver_agent)
 
-    global mcp_client
-    mcp_client = DatabricksMultiServerMCPClient(servers)
-    try:
-        mcp_tools = _mcp_run(mcp_client.get_tools())
-        logger.info("MCP tools loaded: %d tools", len(mcp_tools))
-    except BaseException as exc:
-        server_names = ", ".join(s.name for s in servers)
-        _log_exception_group(exc, server_names=server_names)
-        logger.warning("Batch MCP loading failed for [%s] — trying servers individually…", server_names)
-        mcp_tools = _load_mcp_tools_individually(servers)
-    mcp_tools = wrap_mcp_tools_with_resilience(mcp_tools)
-    mcp_agent = create_agent(
-        llm, tools=mcp_tools, system_prompt=_cfg["prompts"]["mcp"], name="mcp"
-    )
+    else:
+        logger.warning("No 'retriever' specified in config.yml — skipping retriever agents")
 
     # --- Memory agent (save/delete only — retrieval is auto-injected) ---
     mem_agent = create_agent(
@@ -189,12 +180,37 @@ def _build_agent() -> StateGraph:
         name="memory",
     )
 
-    global _agent_tools
-    _agent_tools = _collect_tool_metadata(mcp_tools, _cfg)
+
+    # --- MCP agents (PubChem / PubMed / OpenTargets) ---
+    servers = build_mcp_list(_cfg, ws_client=ws_client)
+    global mcp_client
+
+    if len(servers) > 0:
+        mcp_client = DatabricksMultiServerMCPClient(servers)
+        try:
+            mcp_tools = _mcp_run(mcp_client.get_tools())
+            logger.info("MCP tools loaded: %d tools", len(mcp_tools))
+        except BaseException as exc:
+            server_names = ", ".join(s.name for s in servers)
+            _log_exception_group(exc, server_names=server_names)
+            logger.warning("Batch MCP loading failed for [%s] — trying servers individually…", server_names)
+            mcp_tools = _load_mcp_tools_individually(servers)
+        mcp_tools = wrap_mcp_tools_with_resilience(mcp_tools)
+        mcp_agent = create_agent(
+            llm, tools=mcp_tools, system_prompt=_cfg["prompts"]["mcp"], name="mcp"
+        )
+
+        global _agent_tools
+        _agent_tools = _collect_tool_metadata(mcp_tools, _cfg)
+        all_agents = [mcp_agent, mem_agent] + function_agents + genie_agents + retriever_agents
+
+    else:
+        logger.warning("No MCP servers specified in config.yml — skipping MCP agents")
+        all_agents = [mem_agent] + function_agents + genie_agents + retriever_agents
 
     # --- Supervisor ---
     workflow = create_supervisor(
-        [mcp_agent, mem_agent] + function_agents + genie_agents + retriever_agents,
+        all_agents,
         model=llm,
         prompt=_cfg["prompts"]["supervisor"],
         output_mode="last_message",

@@ -75,7 +75,7 @@ def _get_workspace_client() -> WorkspaceClient:
     try:
         _workspace_client = WorkspaceClient()
     except Exception:
-        if db._sp_client is not None:
+        if db is not None and db._sp_client is not None:
             _workspace_client = db._sp_client
         else:
             raise
@@ -273,20 +273,31 @@ async def api_get_trace(trace_id: str):
 # -- Project CRUD ----------------------------------------------------------
 
 
+def _require_db():
+    if not db.is_connected:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Lakebase unavailable: {db._last_lakebase_error or 'not connected'}",
+        )
+
+
 @app.get("/api/projects")
 async def list_projects(request: Request, user_id: str = Query(default=None)):
+    _require_db()
     uid = user_id or resolve_user_from_request(request, _get_workspace_client)["user_id"]
     return db.list_projects(uid)
 
 
 @app.post("/api/projects")
 async def create_project(request: Request, req: CreateProjectRequest):
+    _require_db()
     uid = req.user_id or resolve_user_from_request(request, _get_workspace_client)["user_id"]
     return db.create_project(uid, req.name)
 
 
 @app.get("/api/projects/{project_id}")
 async def get_project(project_id: str):
+    _require_db()
     project = db.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -295,6 +306,7 @@ async def get_project(project_id: str):
 
 @app.put("/api/projects/{project_id}")
 async def update_project(project_id: str, req: UpdateProjectRequest):
+    _require_db()
     project = db.update_project(project_id, name=req.name, messages=req.messages, agent_steps=req.agent_steps)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -303,6 +315,7 @@ async def update_project(project_id: str, req: UpdateProjectRequest):
 
 @app.delete("/api/projects/{project_id}")
 async def delete_project(project_id: str):
+    _require_db()
     if not db.delete_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     return {"ok": True}
@@ -327,6 +340,13 @@ async def get_skills():
     skills = discover_skills()
     sorted_skills = sorted(skills.items(), key=lambda x: x[0].lower())
     return {name: meta for name, meta in sorted_skills}
+
+
+@app.get("/api/example-questions")
+async def get_example_questions():
+    """Return example questions from config.yml for the chat UI."""
+    cfg = load_config()
+    return cfg.get("example_questions", [])
 
 
 @app.get("/api/health")

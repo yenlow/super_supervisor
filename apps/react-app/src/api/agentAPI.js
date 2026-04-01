@@ -154,6 +154,20 @@ export async function fetchSkills() {
 }
 
 /**
+ * Fetch example questions from config.yml via the backend.
+ * @returns {Promise<string[]>} Array of example question strings
+ */
+export async function fetchExampleQuestions() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/example-questions`)
+    if (response.ok) return response.json()
+  } catch {
+    // fall through to empty
+  }
+  return []
+}
+
+/**
  * Fetch user info from the backend.
  * In Databricks Apps, the backend reads X-Forwarded-* headers.
  * Locally, falls back to defaults (configurable via env vars).
