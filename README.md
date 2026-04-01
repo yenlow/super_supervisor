@@ -139,10 +139,22 @@ uv run start.py
 uv run agent/start_server.py --port 8080
 
 # To invoke the agent server
-
+curl -X POST http://localhost:{AGENT_PORT}/invocations \
+-H "Content-Type: application/json" \
+-d '{ "input": [{ "role": "user", "content": "hi" }], "stream": true }'
 
 # Starts only web server
 uv run server/web_server.py
+
+# To invoke the web server
+curl --request POST \
+  --url http://localhost:{DATABRICKS_APP_PORT}/responses \
+  --header "Authorization: Bearer <oauth-token>" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "input": [{ "role": "user", "content": "Hi" }],
+    "custom_inputs": { "user_id": "user.name@databricks.com" }
+  }'
 ```
 Set the ports using environment variables `AGENT_PORT` and `DATABRICKS_APP_PORT` respectively or in [`app.yaml`](apps/react-app/app.yaml).
 
