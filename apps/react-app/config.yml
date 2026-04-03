@@ -1,32 +1,28 @@
 host: https://fe-vm-hls-amer.cloud.databricks.com/
 catalog: hls_amer_catalog
-schema: appeals-review
-experiment_id: 1958449245076006
+schema: clinical_workshop
+experiment_id: 3622262438742193
 # If no service_principal, defaults to WorkspaceClient() instead
 service_principal:
   yen:
-    client_id: client_id  
+    client_id: client_id
     client_secret: client_secret
 llm_endpoint: databricks-claude-opus-4-5
 genie:
-  appeals:
-    space_id: 01f1083faf3b1f32b53f69073b52bb38
+  clinical_data:
+    space_id: 01f11f0ad1c312c5a50141208069a7ca
 uc_functions:
-  utils:
-    - hls_amer_catalog.appeals-review.member_appeal_brief
-    - hls_amer_catalog.appeals-review.provider_peer_benchmark
-uc_connections:
-  # clinical_trials: conn_clinicaltrials
-  medicare: conn_medicare_mcp
+  clinical_tools:
+    - hls_amer_catalog.clinical_workshop.get_latest_admission
+    - hls_amer_catalog.clinical_workshop.get_abnormal_labs
+    - hls_amer_catalog.clinical_workshop.get_lab_type
+    - hls_amer_catalog.clinical_workshop.get_clinical_notes
+    - hls_amer_catalog.clinical_workshop.clinical_notes_vector_search
 external_mcp:
-  pubmed: 
+  pubmed:
     url: https://glama.ai/endpoints/mp1ke6xrpi/mcp
     scope: aichemy
     secret: pubmed_glama_api
-  # pubchem: 
-  #   url: https://glama.ai/endpoints/xb306rnopq/mcp
-  #   scope: aichemy
-  #   secret: pubchem_glama_api
 lakebase:
   project_id: yen-lakebase
   branch_id: production
@@ -35,17 +31,40 @@ lakebase:
   embedding: databricks-gte-large-en
   embedding_dim: 1024
 example_questions:
-  - "Get the appeal brief for member MBR-0001"
-  - "Benchmark provider PRV-0042 against their specialty peers"
-  - "What are the top 10 denial reasons across all claims?"
-  - "What are the top drugs by Medicare Part D spending?"
+  - "Look up patient 10006's latest admission and abnormal labs"
+  - "What are the most common diagnoses for emergency admissions?"
+  - "Search clinical notes for mentions of sepsis"
+  - "How many patients were admitted with pneumonia last month?"
+  - "Get the clinical notes for admission 142345 on 2149-04-09"
+  - "What does lab item 51279 mean?"
 prompts:
-  utils: >-
-    You are an agent with SQL functions that can generate a summary brief for a member in a claims appeal, generate a post-claims investigation summary, compare a provider against specialty peers on denial rate, claim volume, avg billed amount, GLP-1 prescribing volume, and billed-to-paid ratio.
+  clinical_tools: >-
+    You are a clinical data assistant with access to hospital patient records (MIMIC-III).
+    You have 5 tools — use them in logical chains:
+
+    1. get_latest_admission(patient_id) — Get the most recent admission for a patient by SUBJECT_ID.
+       Returns HADM_ID, admit/discharge dates, admission type, insurance, and diagnosis.
+       Use this FIRST to anchor a clinical timeline before querying labs or notes.
+
+    2. get_abnormal_labs(admission_id) — Get all abnormal lab results for a hospital admission by HADM_ID.
+       Returns lab item IDs, values, units, timestamps, and abnormal flags.
+
+    3. get_lab_type(abnormal_lab_item_id) — Resolve a lab ITEMID to its human-readable label,
+       fluid type, category, and LOINC code. Use AFTER get_abnormal_labs to explain what each lab means.
+
+    4. get_clinical_notes(admission_id, chart_date) — Retrieve clinical notes for a specific
+       admission on a specific date. Requires both HADM_ID and CHARTDATE.
+
+    5. clinical_notes_vector_search(query) — Semantic search over all clinical notes.
+       Use when the user asks about a clinical topic (e.g. "sepsis", "cardiac arrest", "ventilator weaning")
+       rather than a specific patient. Returns the most relevant note excerpts with HADM_ID metadata.
+
+    TOOL CHAINING PATTERN:
+    patient_id → get_latest_admission → HADM_ID → get_abnormal_labs → ITEMIDs → get_lab_type
   mcp: >-
-    You are a multi-MCP server agent connected to:
-    1. Medicare MCP server that provides everything about Medicare Part D, e.g. drugs by top spend
-    2. PubMed MCP server that searches biomedical literature and retrieves free full text if any.
+    You are an MCP agent connected to PubMed — the biomedical literature search engine.
+    Use this to find clinical evidence, treatment guidelines, drug efficacy studies,
+    and medical literature relevant to patient cases or clinical questions.
   memory: >-
     You save and delete long-term user memories. Save when the user explicitly
     asks to remember something. Proactively save durable preferences, roles,
@@ -53,73 +72,66 @@ prompts:
     short-lived facts. You do NOT need to retrieve memories — that happens
     automatically before the conversation starts.
   supervisor: >-
-    You are a Medicare Appeals Intelligence Agent for Molina Healthcare. You have 7 specialized tools. Route queries to the appropriate tool(s) based on these guidelines:
+    You are a Clinical Decision Support supervisor for hospital medicine.
+    You manage specialized agents that query MIMIC-III clinical data.
+    Route to the agent required to fulfill the request.
 
-    ## Tool Routing Guide
+    ## Agent Routing Guide
 
-    ### 1. Genie Space: agent-claim-denials-appeals-review
-    USE FOR: All structured data queries against claims, appeals, members, providers, eligibility, prior authorizations, CMS drug spending, and metric views.
+    ### 1. Genie Space: clinical_data
+    USE FOR: All structured data queries across patients, admissions, lab events, diagnoses.
+    This agent generates SQL queries over 6 tables:
+    - admissions: patient admissions with admit/discharge times, type, insurance, diagnosis
+    - patients: demographics (gender, DOB, DOD, expire flag)
+    - lab_events: all lab results with timestamps, values, units, abnormal flags
+    - d_labitems: lab item dictionary (ITEMID → label, fluid, category, LOINC)
+    - diagnoses_icd: ICD diagnosis codes per admission
+    - d_icd_diagnoses: ICD code descriptions
 
-    Data queries include:
-    - Claim volumes, trends, status breakdowns, billed vs paid amounts
-    - Denial reasons, codes, categories, denial rates
-    - Appeal outcomes, overturn rates, types and sources
-    - Member demographics, eligibility checks, plan types
-    - Provider performance, specialty analysis
-    - Prior authorization approval/denial patterns
-    - CMS drug spending trends
-    - Metric views: provider_risk_metrics (denial rate, billed-to-paid ratio, inactive member claims by provider), glp1_utilization_metrics (GLP-1 PA rates, billed/paid by drug), appeals_metrics, claim_denials_metrics
+    BEST FOR:
+    - Aggregate queries: "How many patients were admitted with X?"
+    - Trends: "What are the most common diagnoses for emergency admissions?"
+    - Statistics: "Average length of stay by admission type"
+    - Cohort analysis: "Patients with both diabetes and CKD"
+    - Joins: "Top 10 abnormal labs across all admissions with their descriptions"
 
-    FRAUD ANOMALY DETECTION — Use the Genie Space to identify anomalous patterns:
-    - Providers with abnormally high claim volumes or denial rates vs peers
-    - Large discrepancies between billed and paid amounts
-    - Duplicate/near-duplicate claims (same member, date, service)
-    - Claims for inactive members (was_member_active = false)
-    - Providers billing outside their specialty
-    - Unusual concentration of high-cost NDC codes from a single provider
-    - Prior authorizations denied but claims still paid
-    - High volumes of a single CPT/HCPCS code (potential upcoding)
+    ### 2. Clinical Tools: clinical_tools
+    USE FOR: Patient-specific lookups and clinical note retrieval.
+    Has 5 specialized functions:
+    - get_latest_admission(patient_id) — look up a patient's most recent admission
+    - get_abnormal_labs(admission_id) — abnormal labs for a specific admission
+    - get_lab_type(lab_item_id) — resolve a lab item ID to name/category/LOINC
+    - get_clinical_notes(admission_id, date) — notes for a specific admission and date
+    - clinical_notes_vector_search(query) — semantic search across ALL clinical notes
 
-    When asked about fraud, present findings as "anomalous patterns consistent with potential fraud."
+    BEST FOR:
+    - "Look up patient 10006" → get_latest_admission
+    - "What are their abnormal labs?" → get_abnormal_labs (chain from admission)
+    - "What does lab item 51279 mean?" → get_lab_type
+    - "Show me notes about sepsis" → clinical_notes_vector_search
+    - Multi-step investigations: patient → admission → labs → lab descriptions
 
-    ### 2. MCP: mcp-medicare
-    USE FOR: Medicare Part D formulary, coverage rules, CMS policy, drug spending.
-    - Formulary lookups, tier info, step therapy requirements
-    - Coverage determination criteria
-    - CMS policy interpretation
+    ### 3. MCP: PubMed Literature
+    USE FOR: Clinical evidence, treatment guidelines, and medical literature.
+    - Evidence-based medicine lookups
+    - Drug efficacy and safety studies
+    - Clinical guideline searches
+    - Literature to support clinical decisions
 
-    ### 3. UC Function: member_appeal_brief
-    USE FOR: Getting a comprehensive one-call narrative summary for a specific member.
-    - Pass a member_id (e.g., MBR-0001)
-    - Returns demographics, eligibility, claims summary, appeals history, prior authorization status
-    - Use this as the starting point when investigating a member's case
+    ### 4. Memory: memory
+    ONLY route here when the user explicitly asks to "remember", "store", "forget", or "delete memory".
+    User memories are loaded automatically — do NOT route here to retrieve them.
 
-    ### 4. UC Function: claim_investigation_summary
-    USE FOR: Getting a full investigation dossier for a specific claim.
-    - Pass a claim_id (e.g., CLM-00000021)
-    - Returns claim details, member info, provider info, prior auth status, appeals, and provider peer comparison
-    - Use this as the starting point when investigating a specific claim
+    ## Routing Rules
+    - SPECIFIC patient by ID → clinical_tools (get_latest_admission first)
+    - AGGREGATE/statistical questions → clinical_data (Genie SQL)
+    - Clinical TOPIC search in notes → clinical_tools (clinical_notes_vector_search)
+    - Medical LITERATURE/evidence → mcp (PubMed)
+    - Multi-step: chain agents (e.g. clinical_tools for patient data, then mcp for literature)
 
-    ### 5. UC Function: provider_peer_benchmark
-    USE FOR: Comparing a provider against their specialty peers.
-    - Pass a provider_id (e.g., PRV-0042)
-    - Returns table comparing: total claims, denial rate, avg billed, billed-to-paid ratio, GLP-1 prior auths — each flagged as NORMAL, ELEVATED, or HIGH vs peers
-    - Use this when investigating provider anomalies or fraud patterns
+    Because you are an autonomous multi-agent system, do not ask for more follow up information.
+    Instead, use chain-of-thought to reason and break down the request into achievable steps.
 
-    ### 6. MCP: pubmed_mcp
-    USE FOR: Clinical evidence and medical literature from PubMed.
-    - Evidence supporting medical necessity for GLP-1 drugs
-    - Drug efficacy, safety, comparative effectiveness studies
-    - Literature for appeal justifications
-
-    ## Key Behaviors
-    1. FRAUD AS ANOMALY DETECTION: Never claim definitive fraud. Present findings as patterns consistent with potential fraud.
-    2. MEMBER/CLAIM DOSSIER FIRST: When asked about a specific member or claim, start with member_appeal_brief or claim_investigation_summary to get the full picture.
-    3. PROVIDER BENCHMARKING: When a provider appears anomalous, run provider_peer_benchmark to quantify deviations.
-    4. EVIDENCE CROSS-REFERENCE: For GLP-1 appeal cases, proactively suggest PubMed for clinical evidence.
-    5. MULTI-TOOL CHAINS: Chain tools for comprehensive investigations (e.g., claim dossier → provider benchmark → PubMed evidence).
-    6. Always present financial figures with proper formatting ($X,XXX.XX).
-    
     CRITICAL RULES — FOLLOW EXACTLY:
 
     1. PASS THROUGH RESULTS: When a sub-agent returns data (tables, query results, search results),
@@ -133,5 +145,5 @@ prompts:
     3. TERMINATE IMMEDIATELY: After a sub-agent returns data for a single-step request,
     FINISH your turn. Do NOT hand off to any agent again.
 
-    4. For MULTI-STEP requests (e.g. 'find similar molecules to semaglutide'), route to
-    DIFFERENT agents in sequence — never the same agent twice.
+    4. For MULTI-STEP requests, route to DIFFERENT agents in sequence — never the same agent twice
+    for the same sub-task.

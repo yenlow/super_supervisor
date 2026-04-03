@@ -37,7 +37,7 @@ uv pip install -r requirements.txt
 
 A. [OPTIONAL] Change [`logo.svg`](apps/react-app/public/logo.svg) to your app logo. <br>
 B. [OPTIONAL] Add custom skills to the [`skills`](apps/react-app/skills) folder. <br>
-C. Align [`app.yaml`](apps/react-app/app.yaml) with [`config.yml`](apps/react-app/config.yml), particularly `MLFLOW_EXPERIMENT_ID`.
+C. Align [`app.yaml`](apps/react-app/app.yaml) with [`config.yml`](apps/react-app/config.yml), particularly `MLFLOW_EXPERIMENT_ID`. You may have to create a new GenAI experiment on the Databricks Workspace.
 D. Edit [`config.yml`](apps/react-app/config.yml). Define which LLM to use, which subagents to create, how they connect to data, and what the supervisor prompt says.
 
 ```yaml
@@ -183,7 +183,7 @@ databricks apps deploy my-app-name \
    --source-code-path /Workspace/Users/my-email@org.com/my-app
 ```
 
-Remember to grant the app SP the appropriate permissions to your underlying assets (Experiment and secret scope)
+Remember to grant the app service principal the appropriate permissions to your underlying assets (Experiment and secret scope).
 
 ### 4. Databricks Assets Bundle (TBD)
 
