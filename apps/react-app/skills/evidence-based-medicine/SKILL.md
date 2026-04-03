@@ -1,6 +1,6 @@
 ---
 name: evidence-based-medicine
-description: Search PubMed for evidence-based medicine to evaluate whether an intervention is effective vs a comparator for a specific indication in a defined patient population, reporting relevant clinical outcomes. Use when the user asks about clinical evidence for a treatment, drug efficacy, comparative effectiveness, "is [drug] effective for [condition]", "evidence for [intervention] vs [comparator]", "what does the literature say about [treatment]", "PICO search", "clinical outcomes for [therapy]", or any request to find published evidence supporting or refuting a clinical intervention.
+description: Search PubMed for evidence to support the use of an intervention using the PICO framework. Evaluate whether an intervention is effective vs a comparator for a specific indication in a defined patient population, reporting relevant clinical outcomes. Use when the user asks about clinical evidence for a treatment, drug efficacy, comparative effectiveness, "is [drug] effective for [condition]", "evidence for [intervention] vs [comparator]", "what does the literature say about [treatment]", "PICO search", "clinical outcomes for [therapy]", or any request to find published evidence supporting or refuting a clinical intervention.
 ---
 
 # Evidence-Based Medicine — PICO Literature Search
