@@ -31,12 +31,10 @@ lakebase:
   embedding: databricks-gte-large-en
   embedding_dim: 1024
 example_questions:
-  - "Look up patient 10006's latest admission and abnormal labs"
-  - "What are the most common diagnoses for emergency admissions?"
-  - "Search clinical notes for mentions of sepsis"
-  - "How many patients were admitted with pneumonia last month?"
-  - "Get the clinical notes for admission 142345 on 2149-04-09"
-  - "What does lab item 51279 mean?"
+  - Look up patient 5362's latest admission and abnormal labs
+  - What are the most common diagnoses for emergency admissions?
+  - Search clinical notes for mentions of sepsis
+  - What does lab item 51279 mean?
 prompts:
   clinical_tools: >-
     You are a clinical data assistant with access to hospital patient records (MIMIC-III).
