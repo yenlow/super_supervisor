@@ -79,7 +79,10 @@ class ProjectDB:
             import traceback
             self._last_lakebase_error = traceback.format_exc()
             print(f"[ProjectDB] Lakebase connection failed:\n{self._last_lakebase_error}")
-            raise
+
+    @property
+    def is_connected(self) -> bool:
+        return self._lakebase_host is not None and self._last_lakebase_error is None
 
     def _build_conninfo(self) -> str:
         return (

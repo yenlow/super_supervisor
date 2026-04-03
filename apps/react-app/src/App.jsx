@@ -8,19 +8,13 @@ import {
   fetchUserInfo,
   fetchDbStatus,
   fetchMcpStatus,
+  fetchExampleQuestions,
   listProjects,
   createProject,
   loadProject,
   saveProject,
   deleteProject as deleteProjectAPI,
 } from './api/agentAPI'
-
-const EXAMPLE_QUESTIONS = [
-  "What diseases are associated with EGFR",
-  "List all the drugs in the GLP-1 agonists ATC class in DrugBank",
-  "Get the latest review study on the GI toxicity of danuglipron",
-  "Show me compounds similar to vemurafenib. Display their structures",
-]
 
 const TOPIC_SNIPPET_MAX = 48
 
@@ -77,6 +71,8 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState(null)
   // External MCP server status (OpenTargets, PubChem, PubMed)
   const [mcpStatus, setMcpStatus] = useState({})
+  // Example questions loaded from config.yml via backend
+  const [exampleQuestions, setExampleQuestions] = useState([])
 
   const chatHistoryRef = useRef(null)
   /** True when project was created via "+ New Project" (rename on first message) */
@@ -96,10 +92,13 @@ export default function App() {
   useEffect(() => {
     async function init() {
       try {
-        const [user, status, mcp] = await Promise.all([fetchUserInfo(), fetchDbStatus(), fetchMcpStatus()])
+        const [user, status, mcp, questions] = await Promise.all([
+          fetchUserInfo(), fetchDbStatus(), fetchMcpStatus(), fetchExampleQuestions(),
+        ])
         setUserInfo(user)
         setDbStatus(status)
         setMcpStatus(mcp)
+        if (questions.length > 0) setExampleQuestions(questions)
         const list = await listProjects(user.user_id)
         setProjects(list)
         if (list.length > 0) {
@@ -361,7 +360,7 @@ export default function App() {
         <ChatPanel
           messages={messages}
           projectName={currentProjectName}
-          exampleQuestions={EXAMPLE_QUESTIONS}
+          exampleQuestions={exampleQuestions}
           onSendMessage={handleSendMessage}
           onReset={handleReset}
           onStop={handleStop}

@@ -300,14 +300,6 @@ def extract_text_from_trace(trace_dict: dict) -> Optional[str]:
 
 SKILLS_DIR = _app_root / "skills"
 
-SKILL_FOLDER_BY_WORKFLOW_IDX = {
-    0: "target-identification",
-    1: "hit-identification",
-    2: "ADME-assessment",
-    3: "safety-assessment",
-}
-
-
 def _smart_title(s: str) -> str:
     """Title-case words, but leave fully uppercase words (e.g. ADME) unchanged."""
     return " ".join(w if w.isupper() else w.title() for w in s.split())
@@ -428,16 +420,32 @@ def extract_user_request(prompt: str) -> str:
 # ---------------------------------------------------------------------------
 
 _MCP_SERVERS: Optional[dict[str, str]] = None
+_ws_client_for_health = None
+
+
+def _get_health_ws_client():
+    """Lazily initialise a WorkspaceClient for UC connection health checks."""
+    global _ws_client_for_health
+    if _ws_client_for_health is None:
+        from databricks.sdk import WorkspaceClient
+        _ws_client_for_health = WorkspaceClient()
+    return _ws_client_for_health
 
 
 def get_mcp_servers() -> dict[str, str]:
-    """Load external MCP server URLs from config.yml (cached)."""
+    """Load MCP server URLs from config.yml (cached).
+
+    Reads both ``external_mcp`` and ``uc_connections`` sections.
+    """
     global _MCP_SERVERS
     if _MCP_SERVERS is None:
         cfg = load_config()
         flat: dict[str, str] = {}
         for name, mcp_cfg in (cfg.get("external_mcp", {})).items():
             flat[name] = mcp_cfg["url"]
+        host = cfg.get("host", "").rstrip("/") + "/"
+        for name, conn_name in (cfg.get("uc_connections", {})).items():
+            flat[name] = f"{host}api/2.0/mcp/external/{conn_name}"
         _MCP_SERVERS = flat
     return _MCP_SERVERS
 
@@ -459,10 +467,19 @@ def check_mcp_server(name: str, url: str, timeout: float = 5.0) -> dict:
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
-    secret = cfg.get("external_mcp", {}).get(name, {}).get("secret")
-    if secret:
-        scope = cfg["external_mcp"].get(name, {}).get("scope")
-        headers["Authorization"] = f"Bearer {get_secret(scope=scope, key=secret)}"
+
+    if "/api/2.0/mcp/external/" in url:
+        try:
+            ws = _get_health_ws_client()
+            header_factory = ws.config.authenticate
+            headers.update(header_factory())
+        except Exception as e:
+            return {"name": name, "url": url, "ok": False, "error": f"auth_failed: {e}"}
+    else:
+        secret = cfg.get("external_mcp", {}).get(name, {}).get("secret")
+        if secret:
+            scope = cfg["external_mcp"].get(name, {}).get("scope")
+            headers["Authorization"] = f"Bearer {get_secret(scope=scope, key=secret)}"
 
     try:
         resp = requests.post(url, json=mcp_init, headers=headers, timeout=timeout)
@@ -481,7 +498,7 @@ def check_mcp_server(name: str, url: str, timeout: float = 5.0) -> dict:
 
 
 async def check_all_mcp_servers() -> list[dict]:
-    """Check reachability of all configured external MCP servers in parallel."""
+    """Check reachability of all configured MCP servers in parallel."""
     from concurrent.futures import ThreadPoolExecutor
 
     servers = get_mcp_servers()
