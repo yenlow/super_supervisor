@@ -13,7 +13,7 @@
 1. **One config, many agents**: A single [`config.yml`](apps/react-app/config.yml) declares your entire agent system: subagents, tools, data sources, and routing prompts. No code changes needed.
 2. **Short-term memory**: Full conversation state is checkpointed to Lakebase via `AsyncCheckpointSaver`, so multi-turn conversations survive server restarts without resending chat history.
 3. **Long-term memory**: Per-user facts, preferences, and notes are stored in Lakebase via `AsyncDatabricksStore` with semantic search. Memories are retrieved automatically before each turn and injected into context.
-4. **Web session memory**
+4. **Web session memory**: Load and resume previous user sessions.
 5. **Agent skills**: Add custom skills to the [`skills`](apps/react-app/skills) folder
 5. **REST API**: Invoke the MLFlow AgentServer at http://localhost:{AGENT_PORT}/invocations
 6. **React web app**: Modern chat interface with session memory, MCP/tool availability, agent tool history, and streaming responses.
@@ -37,7 +37,7 @@ uv pip install -r requirements.txt
 
 A. [OPTIONAL] Change [`logo.svg`](apps/react-app/public/logo.svg) to your app logo. <br>
 B. [OPTIONAL] Add custom skills to the [`skills`](apps/react-app/skills) folder. <br>
-C. Align [`app.yaml`](apps/react-app/app.yaml) with [`config.yml`](apps/react-app/config.yml), particularly `MLFLOW_EXPERIMENT_ID`. You may have to create a new GenAI experiment on the Databricks Workspace.
+C. Align [`app.yaml`](apps/react-app/app.yaml) with [`config.yml`](apps/react-app/config.yml), particularly `MLFLOW_EXPERIMENT_ID`. You may have to create a new GenAI experiment on the Databricks Workspace.<br>
 D. Edit [`config.yml`](apps/react-app/config.yml). Define which LLM to use, which subagents to create, how they connect to data, and what the supervisor prompt says.
 
 ```yaml
